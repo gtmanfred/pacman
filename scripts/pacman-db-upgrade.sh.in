@@ -109,17 +109,56 @@ fi
 # do not let pacman run while we do this
 touch "$lockfile"
 
-# pacman-3.4 to 3.5 upgrade - merge depends into desc
-if [[ $(find "$dbroot"/local -name depends) ]]; then
-	msg "$(gettext "Pre-3.5 database format detected - upgrading...")"
-	for i in "$dbroot"/local/*; do
-		if [[ -f "$i"/depends ]]; then
-			cat "$i"/depends >> "$i"/desc
-			rm "$i"/depends
-		fi
-	done
-	msg "$(gettext "Done.")"
+if [[ -f "${dbroot}"/local/.alpm_db_version ]]; then
+	db_version=$(cat "${dbroot}"/local/.alpm_db_version)
 fi
+
+if [[ -z "$db_version" ]]; then
+	# pacman-3.4 to 3.5 upgrade - merge depends into desc
+	if [[ $(find "$dbroot"/local -name depends) ]]; then
+		msg "$(gettext "Pre-3.5 database format detected - upgrading...")"
+		for i in "$dbroot"/local/*; do
+			if [[ -f "$i"/depends ]]; then
+				cat "$i"/depends >> "$i"/desc
+				rm "$i"/depends
+			fi
+		done
+		msg "$(gettext "Done.")"
+	fi
+
+	# pacman 4.1 to 4.2 upgrade - remove directory symlink support
+	dirlist=()
+
+	unset GREP_OPTIONS
+	while IFS= read -r dir; do
+		dirlist+=("/${dir%/}")
+	done < <(grep -h '/$' "$dbroot"/local/*/files | sort -u)
+
+	mapfile -t dirlist < <(find "${dirlist[@]}" -maxdepth 0 -type l)
+
+	if [[ ${#dirlist[@]} != 0 ]]; then
+		msg "$(gettext "Pre-4.2 database format detected - upgrading...")"
+		for dir in "${dirlist[@]}"; do
+			realdir="$(cd $dir; pwd -P)"
+			for f in "$dbroot"/local/*/files; do
+				awk -v "dir=${dir#/}/" -v "realdir=${realdir#/}/" '
+					BEGIN {
+						i = length(dir) + 1
+					}
+					{
+						if (index($0, dir) == 1) {
+							printf("%s%s\n", realdir, substr($0, i))
+						} else {
+							print
+						}
+					}' $f > $f.tmp
+				mv $f.tmp $f
+			done
+		done
+	fi
+fi
+
+echo "9" > "$dbroot"/local/.alpm_db_version
 
 # remove the lock file
 rm -f "$lockfile"
