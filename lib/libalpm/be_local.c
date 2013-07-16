@@ -398,9 +398,11 @@ static int local_db_validate(alpm_db_t *db)
 {
 	struct dirent *ent = NULL;
 	const char *dbpath;
+	DIR *dbdir;
 	char dbverpath[PATH_MAX];
 	FILE *dbverfile;
-	DIR *dbdir;
+	int t;
+	size_t version;
 
 	if(db->status & DB_STATUS_VALID) {
 		return 0;
@@ -454,6 +456,15 @@ static int local_db_validate(alpm_db_t *db)
 
 		closedir(dbdir);
 		goto version_latest;
+	}
+
+	t = fscanf(dbverfile, "%zu", &version);
+	(void)t;
+
+	fclose(dbverfile);
+
+	if(version != ALPM_LOCAL_DB_VERSION) {
+		goto version_error;
 	}
 
 version_latest:
