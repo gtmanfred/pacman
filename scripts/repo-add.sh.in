@@ -124,6 +124,14 @@ find_pkgentry() {
 	return 1
 }
 
+funcgrep() {
+    awk -v funcmatch="$1" '
+        /^[[:space:]]*[[:alnum:]_]+[[:space:]]*\([[:space:]]*\)/ {
+            match($1, funcmatch)
+            print substr($1, RSTART, RLENGTH)
+        }' "$2"
+}
+
 # Get the package name from the delta filename
 get_delta_pkgname() {
 	local tmp
@@ -265,7 +273,7 @@ db_write_entry() {
 	local -a _groups _licenses _replaces _depends _conflicts _provides \
 		_optdepends _makedepends _checkdepends
 	local pkgname pkgver pkgdesc csize size url arch builddate packager \
-		md5sum sha256sum pgpsig pgpsigsize
+		md5sum sha256sum pgpsig pgpsigsize install_functions
 
 	# read info from the zipped package
 	local line var val
@@ -292,6 +300,13 @@ db_write_entry() {
 	if [[ -z $pkgname || -z $pkgver ]]; then
 		error "$(gettext "Invalid package file '%s'.")" "$pkgfile"
 		return 1
+	fi
+
+	if bsdtar -tf "$pkgfile" | grep -q "^.INSTALL$"; then
+		mapfile -t install_functions < <(funcgrep '(pre|post)_(install|upgrade|remove)' \
+							<(bsdtar -xOqf "$pkgfile" .INSTALL))
+	else
+		install_functions="none"
 	fi
 
 	if [[ -d $tmpdir/tree/$pkgname-$pkgver ]]; then
@@ -374,6 +389,7 @@ db_write_entry() {
 		format_entry "BUILDDATE" "$builddate"
 		format_entry "PACKAGER"  "$packager"
 		format_entry "REPLACES"  "${_replaces[@]}"
+		format_entry "INSTALL"   "${install_functions[@]}"
 	} >'desc'
 
 	# create depends entry
