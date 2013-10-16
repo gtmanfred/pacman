@@ -103,6 +103,7 @@ struct __alpm_pkg_t {
 	off_t download_size;
 
 	int scriptlet;
+	alpm_scriptlet_t functions;
 
 	alpm_pkgreason_t reason;
 	alpm_pkgvalidation_t validation;

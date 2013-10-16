@@ -77,6 +77,17 @@ typedef enum _alpm_pkgvalidation_t {
 	ALPM_PKG_VALIDATION_SIGNATURE = (1 << 3)
 } alpm_pkgvalidation_t;
 
+typedef enum _alpm_scriptlet_t {
+	ALPM_SCRIPTLET_UNKNOWN = 0,
+	ALPM_SCRIPTLET_NONE = (1 << 0),
+	ALPM_SCRIPTLET_PRE_INSTALL = (1 << 1),
+	ALPM_SCRIPTLET_POST_INSTALL = (1 << 2),
+	ALPM_SCRIPTLET_PRE_UPGRADE = (1 << 3),
+	ALPM_SCRIPTLET_POST_UPGRADE = (1 << 4),
+	ALPM_SCRIPTLET_PRE_REMOVE = (1 << 5),
+	ALPM_SCRIPTLET_POST_REMOVE = (1 << 6)
+} alpm_scriptlet_t;
+
 /** Types of version constraints in dependency specs. */
 typedef enum _alpm_depmod_t {
   /** No version constraint */
