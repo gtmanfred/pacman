@@ -674,6 +674,8 @@ static int sync_db_read(alpm_db_t *db, struct archive *archive,
 		/* skip reading delta files if UseDelta is unset */
 	} else if(strcmp(filename, "files") == 0) {
 		/* currently do nothing with this file */
+	} else if(strcmp(filename, "source") == 0) {
+		/* currently do nothing with this file */
 	} else {
 		/* unknown database file */
 		_alpm_log(db->handle, ALPM_LOG_DEBUG, "unknown database file: %s\n", filename);

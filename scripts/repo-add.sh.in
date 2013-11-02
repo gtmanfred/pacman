@@ -33,6 +33,7 @@ DELTA=0
 ONLYADDNEW=0
 RMEXISTING=0
 WITHFILES=0
+SOURCE=0
 SIGN=0
 VERIFY=0
 REPO_DB_FILE=
@@ -61,6 +62,7 @@ Multiple packages to add can be specified on the command line.\n")"
 		printf -- "$(gettext "  -n, --new         only add packages that are not already in the database\n")"
 		printf -- "$(gettext "  -R, --remove      remove package file from disk when updating database entry\n")"
 		printf -- "$(gettext "  -f, --files       update database's file list\n")"
+		printf -- "$(gettext "  -S, --source      add source package information to the database\n")"
 	elif [[ $cmd == "repo-remove" ]] ; then
 		printf -- "$(gettext "Usage: repo-remove [options] <path-to-db> <packagename|delta> ...\n")"
 		printf -- "\n"
@@ -122,6 +124,35 @@ find_pkgentry() {
 		fi
 	done
 	return 1
+}
+
+match_source_package() {
+	case $# in
+		0)
+			warning "$(gettext "No source package found")"
+			return 1
+			;;
+		[!1])
+			warning "$(gettext "Cannot determine source package - multiple matches found:")"
+			msg2 '%s' "$@"
+			return 1
+			;;
+	esac
+
+	echo "$1"
+}
+
+find_source_package() {
+	local pkgfile pkgname pkgver sourcepkg
+
+	pkgfile=$1
+	pkgname=$2
+	pkgver=$3
+
+	local sourcepkg=$(shopt -s nullglob;
+				match_source_package "$(dirname "$pkgfile")/$pkgname-$pkgver".src.tar!(*.sig))
+
+	echo "$sourcepkg"
 }
 
 funcgrep() {
@@ -272,8 +303,9 @@ db_write_entry() {
 	local pkgfile=$1
 	local -a _groups _licenses _replaces _depends _conflicts _provides \
 		_optdepends _makedepends _checkdepends
-	local pkgname pkgver pkgdesc csize size url arch builddate packager \
-		md5sum sha256sum pgpsig pgpsigsize install_functions
+	local pkgname pkgbase pkgver basever pkgdesc csize size url arch builddate \
+		packager md5sum sha256sum pgpsig pgpsigsize install_functions \
+		spkgfile scsize smd5sum ssha256sum spgpsig
 
 	# read info from the zipped package
 	local line var val
@@ -353,6 +385,31 @@ db_write_entry() {
 	sha256sum=$(openssl dgst -sha256 "$pkgfile")
 	sha256sum=${sha256sum##* }
 
+	# gather source package information
+	if (( SOURCE )); then
+		msg2 "$(gettext "Adding source package...")"
+
+		spkgfile=$(find_source_package "$pkgfile" ${pkgbase:-$pkgname} ${basever:-$pkgver})
+
+		if [[ -n "$spkgfile" ]]; then
+			if [[ -f "$spkgfile.sig" ]]; then
+				pgpsigsize=$(@SIZECMD@ -L "$spkgfile.sig")
+				if (( pgpsigsize > 16384 )); then
+					error "$(gettext "Invalid package signature file '%s'.")" "$spkgfile.sig"
+					return 1
+				fi
+				spgpsig=$(openssl base64 -in "$spkgfile.sig" | tr -d '\n')
+			fi
+
+			scsize=$(@SIZECMD@ -L "$spkgfile")
+
+			smd5sum=$(openssl dgst -md5 "$spkgfile")
+			smd5sum=${md5sum##* }
+			ssha256sum=$(openssl dgst -sha256 "$spkgfile")
+			ssha256sum=${sha256sum##* }
+		fi
+	fi
+
 	# remove an existing entry if it exists, ignore failures
 	db_remove_entry "$pkgname"
 
@@ -371,6 +428,7 @@ db_write_entry() {
 		format_entry "NAME"      "$pkgname"
 		format_entry "BASE"      "$pkgbase"
 		format_entry "VERSION"   "$pkgver"
+		format_entry "BASEVER"   "$basever"
 		format_entry "DESC"      "$pkgdesc"
 		format_entry "GROUPS"    "${_groups[@]}"
 		format_entry "CSIZE"     "$csize"
@@ -402,6 +460,18 @@ db_write_entry() {
 		format_entry "MAKEDEPENDS" "${_makedepends[@]}"
 		format_entry "CHECKDEPENDS" "${_checkdepends[@]}"
 	} >'depends'
+
+	# create source entry
+	if (( SOURCE )) && [[ -n "$spkgfile" ]]; then
+		msg2 "$(gettext "Creating '%s' db entry...")" 'source'
+		{
+			format_entry "FILENAME"  "${spkgfile##*/}"
+			format_entry "CSIZE"     "$scsize"
+			format_entry "MD5SUM"    "$smd5sum"
+			format_entry "SHA256SUM" "$ssha256sum"
+			format_entry "PGPSIG"    "$spgpsig"
+		} >'source'
+	fi
 
 	popd >/dev/null
 	popd >/dev/null
@@ -640,6 +710,7 @@ while (( $# )); do
 		-n|--new) ONLYADDNEW=1;;
 		-R|--remove) RMEXISTING=1;;
 		-f|--files) WITHFILES=1;;
+		-S|--source) SOURCE=1;;
 		--nocolor) USE_COLOR='n';;
 		-s|--sign)
 			check_gpg
